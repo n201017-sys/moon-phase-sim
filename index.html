@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>달의 위상 시뮬레이션</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+:root {
+  --bg: #f3f4f7; --surface: #ffffff; --fg: #161c27; --muted: #5a6376;
+  --accent: #3448c5; --accent-fg: #ffffff; --line: #d9dee8; --sky: #0b0f16;
+  --font-body: "Noto Sans KR", system-ui, -apple-system, "Malgun Gothic", sans-serif;
+  --font-head: "Space Grotesk", "Noto Sans KR", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1218; --surface: #161c26; --fg: #e6eaf2; --muted: #9aa4b5;
+    --accent: #8ea8ff; --accent-fg: #0e1218; --line: #2a3346; --sky: #070a10;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1218; --surface: #161c26; --fg: #e6eaf2; --muted: #9aa4b5;
+  --accent: #8ea8ff; --accent-fg: #0e1218; --line: #2a3346; --sky: #070a10;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+h1, h2 { font-family: var(--font-head); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.1rem; margin-bottom: 6px; }
+p { margin: 0; }
+.sub, .note, .stat { color: var(--muted); }
+.note { font-size: 0.9rem; margin-top: 10px; }
+.note:empty { display: none; }
+.stat { font-variant-numeric: tabular-nums; }
+[hidden] { display: none !important; }
+main { max-width: 1080px; margin: 20px auto 0; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  main { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+  .stage { grid-row: span 2; }
+  .wide { grid-column: 1 / -1; }
+}
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+@media (max-width: 720px) { .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field span { font-size: 0.85rem; color: var(--muted); }
+input[type="text"] {
+  font: inherit; width: 100%; min-width: 0; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+.consent { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 0.92rem; }
+.consent input { margin-top: 4px; accent-color: var(--accent); }
+.views { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+@media (max-width: 520px) { .views { grid-template-columns: minmax(0, 1fr); } }
+canvas { max-width: 100%; height: auto; display: block; }
+.views canvas, .detail canvas, .gthumbs canvas {
+  width: 100%; aspect-ratio: 1 / 1; background: var(--sky); border-radius: 10px;
+}
+.readout { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-top: 12px; }
+#phaseName { font-family: var(--font-head); font-size: 1.25rem; font-weight: 700; }
+.controls { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.controls input[type="range"] { flex: 1 1 200px; min-width: 0; accent-color: var(--accent); }
+button, a.btn {
+  font: inherit; font-weight: 600; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); padding: 8px 14px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary, a.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button[aria-selected="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:focus-visible, a.btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 560px) { .slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.slot { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.slot canvas { border-radius: 8px; }
+.slot figcaption { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.slot figcaption strong { color: var(--fg); }
+.slot input[type="file"] { font-size: 0.75rem; max-width: 100%; color: var(--muted); }
+.actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.panel { margin-top: 14px; }
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: center; }
+@media (max-width: 640px) { .detail { grid-template-columns: minmax(0, 1fr); } }
+.dname { font-family: var(--font-head); font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+#dDesc { margin-top: 8px; font-size: 1.02rem; }
+.dnav { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+.dots { display: flex; gap: 6px; flex-wrap: wrap; }
+.dots button { width: 14px; height: 14px; padding: 0; border-radius: 50%; border: 1px solid var(--muted); background: transparent; }
+.dots button[aria-current="true"] { background: var(--accent); border-color: var(--accent); }
+.resultimg { display: block; width: 100%; max-width: 760px; height: auto; margin: 0 auto; border-radius: 10px; background: var(--sky); }
+textarea {
+  width: 100%; font: inherit; font-size: 0.9rem; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--fg); margin-top: 6px;
+}
+.glist { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 12px; }
+.gcard { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 10px; }
+.gcard .stat { font-size: 0.85rem; }
+.gthumbs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+@media (max-width: 640px) { .gthumbs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.limits ul { margin: 8px 0 0; padding-left: 1.2em; }
+.limits li { margin: 4px 0; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>달의 위상 시뮬레이션</h1>
+  <p class="sub">친구 얼굴 사진 8장을 달의 위치에 맞춰 놓고, 공전에 따른 위상 변화를 재현합니다.</p>
+</header>
+
+<main>
+  <section class="card info" aria-labelledby="info-title">
+    <h2 id="info-title">모둠 정보</h2>
+    <div class="fields">
+      <label class="field"><span>반 코드 (선생님이 알려 준 코드)</span><input id="classCode" type="text" maxlength="30" placeholder="예: 3-2026"></label>
+      <label class="field"><span>학년</span><input id="grade" type="text" maxlength="20" placeholder="예: 2학년"></label>
+      <label class="field"><span>반</span><input id="cls" type="text" maxlength="20" placeholder="예: 3반"></label>
+      <label class="field"><span>모둠명</span><input id="group" type="text" maxlength="30" placeholder="예: 햇살 모둠"></label>
+    </div>
+    <label class="consent">
+      <input id="consent" type="checkbox">
+      <span>사진을 찍은 학생과 보호자의 동의를 받았습니다. (서버에 저장하려면 체크해야 합니다)</span>
+    </label>
+  </section>
+
+  <section class="card stage" aria-labelledby="stage-title">
+    <h2 id="stage-title">공전 시뮬레이션</h2>
+    <div class="views">
+      <canvas id="moon" width="480" height="480" role="img" aria-label="달의 위상 모습"></canvas>
+      <canvas id="orbit" width="480" height="480" role="img" aria-label="태양, 지구, 달의 배치"></canvas>
+    </div>
+    <div class="readout" aria-live="polite">
+      <span id="phaseName"></span>
+      <span class="stat" id="pct"></span>
+      <span class="stat" id="angle"></span>
+    </div>
+    <div class="controls">
+      <button id="auto" type="button">8위치 자동 재생</button>
+      <button id="play" type="button">연속 재생</button>
+    </div>
+    <div class="controls">
+      <input id="angleRange" type="range" min="0" max="359" step="1" value="0" aria-label="달의 공전 각도">
+    </div>
+    <p class="note" id="sourceNote"></p>
+  </section>
+
+  <section class="card" aria-labelledby="slots-title">
+    <h2 id="slots-title">8개 위치 사진</h2>
+    <p class="note" style="margin-top:0">각 칸에 사진을 올리면 그 위치의 명암이 씌워진 모습으로 바뀝니다. 서버에 저장하기 전까지는 이 기기 안에만 있습니다.</p>
+    <div class="slots" id="slots"></div>
+    <div class="actions">
+      <button id="finish" class="primary" type="button">최종 결과 확인</button>
+      <button id="clearAll" type="button">사진 모두 지우기</button>
+    </div>
+  </section>
+
+  <section id="result" class="card wide" aria-labelledby="result-title" hidden>
+    <h2 id="result-title">최종 결과</h2>
+    <p class="note" style="margin-top:0">1단계에서 위치별로 확인하고, 2단계에서 8개 위상을 한 화면으로 저장하거나 복사합니다.</p>
+    <div class="tabs" role="tablist">
+      <button id="tab1" type="button" role="tab" aria-selected="true">1단계 · 위치별 확인</button>
+      <button id="tab2" type="button" role="tab" aria-selected="false">2단계 · 최종 결과</button>
+    </div>
+
+    <div id="panel1" class="panel" role="tabpanel">
+      <div class="detail">
+        <canvas id="detail" width="480" height="480" role="img" aria-label="선택한 위치의 달 위상"></canvas>
+        <div>
+          <div id="dMeta" class="stat"></div>
+          <div id="dName" class="dname"></div>
+          <p id="dDesc"></p>
+          <div class="dnav">
+            <button id="prev" type="button">이전</button>
+            <div id="dots" class="dots"></div>
+            <button id="next" type="button">다음</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel2" class="panel" role="tabpanel" hidden>
+      <img id="resultImg" class="resultimg" alt="최종 결과: 8개 위치의 달 위상">
+      <div class="actions">
+        <button id="saveImg" class="primary" type="button">이미지 저장</button>
+        <button id="copyImg" type="button">이미지 복사</button>
+        <button id="copyTxt" type="button">텍스트 복사</button>
+      </div>
+      <p class="note">저장이나 복사가 동작하지 않으면 결과 이미지를 길게 누르거나 우클릭해 저장·복사하세요.</p>
+
+      <div class="actions">
+        <button id="serverSave" class="primary" type="button" disabled>반 자료에 이 모둠 저장</button>
+      </div>
+      <p class="note" id="serverNote">같은 반 코드·학년·반·모둠명으로 저장하면 이전 자료를 덮어씁니다. 서버에는 축소한 사진 사본만 저장됩니다.</p>
+
+      <label for="summary" class="note" style="display:block">텍스트 요약 (직접 선택해 복사할 수도 있습니다)</label>
+      <textarea id="summary" readonly rows="10"></textarea>
+    </div>
+
+    <p id="msg" class="note" aria-live="polite"></p>
+  </section>
+
+  <section class="card wide" aria-labelledby="gallery-title">
+    <h2 id="gallery-title">우리 반 모둠별 결과 보기</h2>
+    <p class="note" style="margin-top:0">위의 <strong>반 코드</strong>를 입력한 뒤 목록을 불러오면, 그 반에 저장된 모둠만 나옵니다.</p>
+    <div class="actions">
+      <button id="loadGroups" type="button">모둠 목록 불러오기</button>
+    </div>
+    <p class="note" id="gmsg" aria-live="polite"></p>
+    <div id="glist" class="glist"></div>
+    <div id="gview" hidden>
+      <h2 id="gTitle" style="margin-top:14px"></h2>
+      <p class="stat" id="gMeta"></p>
+      <img id="gImg" class="resultimg" alt="모둠 결과 화면" style="margin-top:10px">
+      <div class="gthumbs" id="gthumbs"></div>
+    </div>
+  </section>
+
+  <section class="card limits wide" aria-labelledby="limits-title">
+    <h2 id="limits-title">이 시뮬레이션의 한계와 주의</h2>
+    <ul>
+      <li>얼굴은 구가 아니므로 명암 경계는 근사값입니다. 실제 달의 경계는 더 부드럽습니다.</li>
+      <li>사진에 이미 찍힌 조명이 있으면 가짜 명암과 겹칩니다. 자동 노출을 끄고 같은 밝기로 찍어야 합니다.</li>
+      <li>각도 사이의 값은 가장 가까운 칸의 사진을 씁니다. 실제 달의 위상은 연속적으로 변합니다.</li>
+      <li>궤도 기울기(약 5°)와 거리 비율은 반영하지 않습니다. 그림은 축척이 없습니다.</li>
+      <li>서버에는 원본이 아니라 축소 사본(480px 이하)이 저장됩니다. 반 코드를 아는 사람은 누구나 자료를 볼 수 있으므로, 활동이 끝나면 선생님이 자료를 지우세요.</li>
+    </ul>
+  </section>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+// ===== 1. 여기에 Firebase 설정값을 붙여넣으세요 (const firebaseConfig = { ... }; 전체) =====
+const firebaseConfig = {
+  apiKey: "AIzaSyBiSe2dBDeHU0iFb4eSTaW36OUeQp15hf4",
+  authDomain: "mohyun12-cff9b.firebaseapp.com",
+  databaseURL: "https://mohyun12-cff9b-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "mohyun12-cff9b",
+  storageBucket: "mohyun12-cff9b.firebasestorage.app",
+  messagingSenderId: "1089593933001",
+  appId: "1:1089593933001:web:4dcb8484afe1847f7a2118",
+  measurementId: "G-RVFP19RELV"
+};
+// ===== 설정 끝 =====
+
+// 공유 결과 요약에 넣을 주소 (GitHub Pages 주소를 넣으세요)
+const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
+
+(() => {
+  const SLOTS = [
+    { d: 0, n: "삭" }, { d: 45, n: "초승달" }, { d: 90, n: "상현달" }, { d: 135, n: "차오르는 볼록달" },
+    { d: 180, n: "보름달" }, { d: 225, n: "기우는 볼록달" }, { d: 270, n: "하현달" }, { d: 315, n: "그믐달" }
+  ];
+  const DESC = [
+    "달이 태양과 같은 방향에 있어 보이지 않는다.",
+    "오른쪽 가장자리가 얇게 밝다.",
+    "오른쪽 반이 밝은 반달 모양이다.",
+    "오른쪽 반 이상이 밝은 볼록달이다.",
+    "햇빛이 달의 전면을 비춰 보름달로 보인다.",
+    "왼쪽 반 이상이 밝은 볼록달이다.",
+    "왼쪽이 밝은 반달 모양이다.",
+    "왼쪽 가장자리가 얇게 밝다."
+  ];
+
+  const photos = new Array(8).fill(null);
+  const rad = (deg) => deg * Math.PI / 180;
+  const $ = (id) => document.getElementById(id);
+  const litPct = (deg) => Math.round((1 - Math.cos(rad(deg))) / 2 * 100);
+
+  // ----- Firebase (설정이 없으면 서버 기능만 꺼집니다) -----
+  let db = null;
+  let dbError = "";
+  if (typeof firebase === "undefined") {
+    dbError = "Firebase 연결 스크립트를 불러오지 못했습니다. 이 파일을 GitHub Pages 같은 웹 주소에서 열어 주세요. (미리보기 화면에서는 서버 저장이 막힙니다)";
+  } else if (!firebaseConfig.databaseURL || firebaseConfig.databaseURL.includes("PASTE")) {
+    dbError = "Firebase 설정값이 아직 들어가지 않았습니다. 파일 안의 firebaseConfig를 확인하세요.";
+  } else {
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+    } catch (e) {
+      db = null;
+      dbError = "Firebase 연결에 실패했습니다: " + (e && e.message ? e.message : "알 수 없는 오류");
+    }
+  }
+
+  const moonCanvas = $("moon"), orbitCanvas = $("orbit"), range = $("angleRange");
+  const playBtn = $("play"), autoBtn = $("auto"), phaseName = $("phaseName");
+  const pctEl = $("pct"), angleEl = $("angle"), sourceNote = $("sourceNote");
+  const slotsEl = $("slots"), gradeEl = $("grade"), clsEl = $("cls"), groupEl = $("group");
+  const classCodeEl = $("classCode"), consentEl = $("consent");
+  const resultSec = $("result"), tab1 = $("tab1"), tab2 = $("tab2");
+  const panel1 = $("panel1"), panel2 = $("panel2"), detailCanvas = $("detail");
+  const dName = $("dName"), dDesc = $("dDesc"), dMeta = $("dMeta"), dots = $("dots");
+  const resultImg = $("resultImg"), msgEl = $("msg"), summaryEl = $("summary");
+  const serverSaveBtn = $("serverSave"), serverNote = $("serverNote");
+  const resultCanvas = document.createElement("canvas");
+  let detailIdx = 0;
+
+  // ----- drawing -----
+  function drawCover(ctx, img, x, y, S) {
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const side = Math.min(w, h);
+    ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, x, y, S, S);
+  }
+
+  function drawMoonAt(ctx, cx, cy, R, deg, src) {
+    const t = rad(((deg % 360) + 360) % 360);
+    const S = Math.round(2 * R), r = S / 2;
+    const flipped = t > Math.PI;
+    const tw = flipped ? 2 * Math.PI - t : t;
+    const c = Math.cos(tw);
+    const off = document.createElement("canvas");
+    off.width = S; off.height = S;
+    const o = off.getContext("2d");
+    o.save();
+    if (flipped) { o.translate(S, 0); o.scale(-1, 1); }
+    o.fillStyle = "#fff";
+    o.beginPath(); o.arc(r, r, r, -Math.PI / 2, Math.PI / 2); o.closePath(); o.fill();
+    if (c > 1e-9) {
+      o.globalCompositeOperation = "destination-out";
+      o.beginPath(); o.ellipse(r, r, r * c, r, 0, -Math.PI / 2, Math.PI / 2); o.closePath(); o.fill();
+      o.globalCompositeOperation = "source-over";
+    } else if (c < -1e-9) {
+      o.beginPath(); o.ellipse(r, r, r * -c, r, 0, Math.PI / 2, 3 * Math.PI / 2); o.closePath(); o.fill();
+    }
+    o.restore();
+    o.globalCompositeOperation = "source-in";
+    if (src) drawCover(o, src, 0, 0, S);
+    else {
+      const g = o.createRadialGradient(r * 0.7, r * 0.7, r * 0.1, r, r, r);
+      g.addColorStop(0, "#f2f2ee"); g.addColorStop(1, "#aeb3bd");
+      o.fillStyle = g; o.fillRect(0, 0, S, S);
+    }
+    o.globalCompositeOperation = "source-over";
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = "#1a2030"; ctx.fillRect(cx - R, cy - R, S, S);
+    if (src) { ctx.globalAlpha = 0.08; drawCover(ctx, src, cx - R, cy - R, S); ctx.globalAlpha = 1; }
+    ctx.drawImage(off, cx - R, cy - R, S, S);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = Math.max(1, R * 0.012); ctx.stroke();
+  }
+
+  function renderMoon(canvas, deg, src) {
+    const ctx = canvas.getContext("2d"), W = canvas.width;
+    ctx.clearRect(0, 0, W, W);
+    drawMoonAt(ctx, W / 2, W / 2, W * 0.42, deg, src);
+  }
+
+  function renderOrbit(deg) {
+    const ctx = orbitCanvas.getContext("2d"), W = orbitCanvas.width;
+    const sun = { x: 60, y: W / 2 }, earth = { x: W * 0.66, y: W / 2 }, orbitR = W * 0.27;
+    const t = rad(deg);
+    const moon = { x: earth.x - orbitR * Math.cos(t), y: earth.y + orbitR * Math.sin(t) };
+    ctx.clearRect(0, 0, W, W);
+    ctx.fillStyle = "#070a10"; ctx.fillRect(0, 0, W, W);
+    ctx.beginPath(); ctx.arc(earth.x, earth.y, orbitR, 0, Math.PI * 2);
+    ctx.setLineDash([6, 6]); ctx.strokeStyle = "rgba(255,255,255,0.25)"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(sun.x + 36, sun.y); ctx.lineTo(earth.x - 40, earth.y);
+    ctx.strokeStyle = "rgba(255,214,102,0.35)"; ctx.lineWidth = 2; ctx.stroke();
+    const sg = ctx.createRadialGradient(sun.x, sun.y, 6, sun.x, sun.y, 40);
+    sg.addColorStop(0, "#fff3b0"); sg.addColorStop(1, "rgba(255,190,60,0)");
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sun.x, sun.y, 40, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.arc(sun.x, sun.y, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4f86d9"; ctx.beginPath(); ctx.arc(earth.x, earth.y, 26, 0, Math.PI * 2); ctx.fill();
+    const toSun = Math.atan2(sun.y - moon.y, sun.x - moon.x);
+    ctx.fillStyle = "#2a3347"; ctx.beginPath(); ctx.arc(moon.x, moon.y, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e9ecf2"; ctx.beginPath(); ctx.arc(moon.x, moon.y, 16, toSun - Math.PI / 2, toSun + Math.PI / 2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#c9d1de"; ctx.font = "600 22px 'Noto Sans KR', system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("태양", sun.x, sun.y + 62);
+    ctx.fillText("지구 (카메라)", earth.x, earth.y + 62);
+    ctx.fillText("달", moon.x, moon.y - 26);
+  }
+
+  // Composite of all eight phases. list[i] is an Image or null; info = {grade, cls, group, date}.
+  function drawComposite(list, info) {
+    const W = 1000, H = 1080, cx = 500, cy = 600, R = 300, half = 88;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#070a10"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    for (let i = 0; i < 90; i++) { ctx.fillRect((i * 97) % W, (i * 53) % 150 + 4, 2, 2); ctx.fillRect((i * 61) % W, (i * 137) % H, 1.5, 1.5); }
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e6eaf2"; ctx.font = "700 40px 'Noto Sans KR', system-ui, sans-serif";
+    ctx.fillText("달의 위상 변화 모형 결과", W / 2, 70);
+    ctx.font = "600 26px 'Noto Sans KR', system-ui, sans-serif";
+    ctx.fillText(info.grade + " · " + info.cls + " · " + info.group, W / 2, 116);
+    ctx.font = "400 20px 'Noto Sans KR', system-ui, sans-serif"; ctx.fillStyle = "#9aa4b5";
+    ctx.fillText(info.date, W / 2, 148);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(170,200,255,0.55)"; ctx.lineWidth = 4; ctx.stroke();
+    const eg = ctx.createRadialGradient(cx - 18, cy - 18, 8, cx, cy, 58);
+    eg.addColorStop(0, "#8fc1ff"); eg.addColorStop(1, "#2a5aa8");
+    ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(cx, cy, 56, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(90,170,110,0.75)";
+    ctx.beginPath(); ctx.ellipse(cx - 14, cy + 8, 18, 12, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + 20, cy - 16, 12, 8, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#c9d1de"; ctx.font = "600 22px 'Noto Sans KR', system-ui, sans-serif";
+    ctx.fillText("지구", cx, cy + 90);
+    SLOTS.forEach((s, i) => {
+      const a = rad(s.d), x = cx + R * Math.cos(a), y = cy - R * Math.sin(a);
+      ctx.fillStyle = "#16203a"; ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x - half, y - half, half * 2, half * 2, 22);
+      else ctx.rect(x - half, y - half, half * 2, half * 2);
+      ctx.fill();
+      drawMoonAt(ctx, x, y, 78, s.d, list[i]);
+      ctx.fillStyle = "#e6eaf2"; ctx.font = "700 26px 'Noto Sans KR', system-ui, sans-serif";
+      ctx.fillText(s.n, x, y + 118);
+      ctx.fillStyle = "#9aa4b5"; ctx.font = "400 21px 'Noto Sans KR', system-ui, sans-serif";
+      ctx.fillText(s.d + "° · " + (list[i] ? "밝은 부분 " + litPct(s.d) + "%" : "사진 없음"), x, y + 150);
+    });
+    return canvas;
+  }
+
+  function phaseLabel(deg) {
+    const d = ((deg % 360) + 360) % 360;
+    if (d < 22.5 || d >= 337.5) return "삭";
+    if (d < 67.5) return "초승달";
+    if (d < 112.5) return "상현달";
+    if (d < 157.5) return "차오르는 볼록달";
+    if (d < 202.5) return "보름달";
+    if (d < 247.5) return "기우는 볼록달";
+    if (d < 292.5) return "하현달";
+    return "그믐달";
+  }
+
+  function groupInfo() {
+    return {
+      grade: gradeEl.value.trim() || "학년 미입력",
+      cls: clsEl.value.trim() || "반 미입력",
+      group: groupEl.value.trim() || "모둠명 미입력",
+      date: new Date().toLocaleDateString("ko-KR")
+    };
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("image"));
+      img.src = src;
+    });
+  }
+
+  // Square JPEG, at most `max` px, kept under ~180 KB of text.
+  function downscale(img, max) {
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const side = Math.min(w, h), S = Math.min(max, side);
+    const c = document.createElement("canvas");
+    c.width = S; c.height = S;
+    c.getContext("2d").drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, S, S);
+    let q = 0.8, url = c.toDataURL("image/jpeg", q);
+    while (url.length > 180000 && q > 0.4) { q -= 0.1; url = c.toDataURL("image/jpeg", q); }
+    return url;
+  }
+
+  // Keys in Realtime Database cannot contain . # $ [ ] / — replace them.
+  const safeKey = (s) => String(s).trim().replace(/[.#$\[\]\/]/g, "-").slice(0, 60);
+
+  async function groupId() {
+    const s = [classCodeEl.value.trim(), gradeEl.value.trim(), clsEl.value.trim(), groupEl.value.trim()].join("|");
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return "g" + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  const classPath = () => "classes/" + safeKey(classCodeEl.value);
+
+  function showMsg(text) { msgEl.textContent = text; }
+
+  // ----- stage -----
+  function update() {
+    const deg = Number(range.value);
+    const idx = Math.round(deg / 45) % 8;
+    const src = photos[idx];
+    renderMoon(moonCanvas, deg, src);
+    renderOrbit(deg);
+    phaseName.textContent = phaseLabel(deg);
+    pctEl.textContent = "밝은 부분 " + litPct(deg) + "%";
+    angleEl.textContent = "공전 각도 " + deg + "°";
+    sourceNote.textContent = src
+      ? "이 화면은 " + (idx * 45) + "° 칸에 올린 사진을 씁니다."
+      : "이 각도 근처에 올린 사진이 없어 회색 기본 달을 보여 줍니다.";
+  }
+
+  function renderSlot(i) {
+    const canvas = slotsEl.querySelectorAll("canvas")[i];
+    if (!canvas) return;
+    if (photos[i]) { renderMoon(canvas, SLOTS[i].d, photos[i]); return; }
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#070a10"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#8a93a3"; ctx.font = "600 16px 'Noto Sans KR', system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("사진 없음", canvas.width / 2, canvas.height / 2 + 6);
+  }
+
+  // ----- result -----
+  function renderDetail() {
+    renderMoon(detailCanvas, SLOTS[detailIdx].d, photos[detailIdx]);
+    dName.textContent = SLOTS[detailIdx].n;
+    dMeta.textContent = SLOTS[detailIdx].d + "° · 밝은 부분 " + litPct(SLOTS[detailIdx].d) + "% · " + (photos[detailIdx] ? "사진 있음" : "사진 없음");
+    dDesc.textContent = DESC[detailIdx];
+    [...dots.children].forEach((b, i) => b.setAttribute("aria-current", i === detailIdx ? "true" : "false"));
+  }
+
+  function summaryText() {
+    const info = groupInfo();
+    const lines = ["달의 위상 변화 모형 결과", info.grade + " " + info.cls + " · " + info.group];
+    if (PAGE_URL && !PAGE_URL.includes("PASTE")) lines.push("결과 페이지: " + PAGE_URL);
+    lines.push("");
+    SLOTS.forEach((s, i) => lines.push(s.d + "° " + s.n + ": " + (photos[i] ? "밝은 부분 " + litPct(s.d) + "%" : "사진 없음")));
+    return lines.join("\n");
+  }
+
+  function renderResult() {
+    const canvas = drawComposite(photos, groupInfo());
+    resultCanvas.width = canvas.width; resultCanvas.height = canvas.height;
+    resultCanvas.getContext("2d").drawImage(canvas, 0, 0);
+    resultImg.src = resultCanvas.toDataURL("image/png");
+    summaryEl.value = summaryText();
+    serverSaveBtn.disabled = !photos.some(Boolean);
+  }
+
+  function setStep(n) {
+    panel1.hidden = n !== 1; panel2.hidden = n !== 2;
+    tab1.setAttribute("aria-selected", String(n === 1));
+    tab2.setAttribute("aria-selected", String(n === 2));
+    if (n === 1) renderDetail(); else renderResult();
+  }
+
+  function refreshResultIfOpen() {
+    if (resultSec.hidden) return;
+    renderDetail();
+    if (!panel2.hidden) renderResult();
+  }
+
+  // ----- server save: classes/{반 코드}/groups/{모둠} -----
+  async function saveToServer() {
+    const note = (t) => { serverNote.textContent = t; };
+    if (!db) { note(dbError); return; }
+    if (!classCodeEl.value.trim()) { note("반 코드를 입력하세요."); return; }
+    if (!gradeEl.value.trim() || !clsEl.value.trim() || !groupEl.value.trim()) { note("학년, 반, 모둠명을 모두 입력한 뒤 저장하세요."); return; }
+    if (!consentEl.checked) { note("사진을 찍은 학생과 보호자의 동의를 확인해야 저장할 수 있습니다. 위의 체크 칸을 누르세요."); return; }
+    if (!photos.some(Boolean)) { note("저장할 사진이 없습니다."); return; }
+
+    serverSaveBtn.disabled = true;
+    note("저장 중...");
+    try {
+      const gid = await groupId();
+      const base = classPath() + "/groups/" + gid;
+      const updates = {};
+      const slots = [];
+      for (let i = 0; i < 8; i++) {
+        if (photos[i]) {
+          updates["photos/" + i] = { deg: SLOTS[i].d, name: SLOTS[i].n, data: downscale(photos[i], 480) };
+          slots.push(i);
+        } else {
+          updates["photos/" + i] = null;
+        }
+      }
+      updates["meta"] = {
+        grade: gradeEl.value.trim(), cls: clsEl.value.trim(), group: groupEl.value.trim(),
+        slots: slots, updatedAt: Date.now()
+      };
+      await db.ref(base).update(updates);
+      note("저장했습니다. 아래 '우리 반 모둠별 결과 보기'에서 확인할 수 있습니다.");
+    } catch (e) {
+      note("저장하지 못했습니다. 인터넷 연결과 반 코드를 확인한 뒤 다시 눌러 주세요.");
+    } finally {
+      serverSaveBtn.disabled = !photos.some(Boolean);
+    }
+  }
+
+  // ----- gallery (one class) -----
+  async function loadGroups() {
+    const gmsg = $("gmsg"), glist = $("glist");
+    glist.innerHTML = "";
+    $("gview").hidden = true;
+    if (!db) { gmsg.textContent = dbError; return; }
+    if (!classCodeEl.value.trim()) { gmsg.textContent = "반 코드를 입력한 뒤 다시 눌러 주세요."; return; }
+    gmsg.textContent = "불러오는 중...";
+    try {
+      const snap = await db.ref(classPath() + "/groups").once("value");
+      const data = snap.val() || {};
+      const entries = Object.keys(data).map((k) => ({ id: k, v: data[k].meta || {} }))
+        .filter((e) => e.v.group)
+        .sort((a, b) => (a.v.grade + a.v.cls + a.v.group).localeCompare(b.v.grade + b.v.cls + b.v.group, "ko"));
+      if (!entries.length) { gmsg.textContent = "이 반 코드로 저장된 모둠이 없습니다."; return; }
+      gmsg.textContent = entries.length + "개 모둠이 저장되어 있습니다. 모둠을 누르면 결과를 봅니다.";
+      entries.forEach((e) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "gcard";
+        const strong = document.createElement("strong");
+        strong.textContent = e.v.grade + " " + e.v.cls + " · " + e.v.group;
+        const sub = document.createElement("span"); sub.className = "stat";
+        sub.textContent = "사진 " + ((e.v.slots && e.v.slots.length) || 0) + "장 · " + (e.v.updatedAt ? new Date(e.v.updatedAt).toLocaleString("ko-KR") : "");
+        b.append(strong, sub);
+        b.addEventListener("click", () => openGroup(e.id, data[e.id]));
+        glist.appendChild(b);
+      });
+    } catch (e) {
+      gmsg.textContent = "목록을 불러오지 못했습니다. 반 코드와 인터넷 연결을 확인하세요.";
+    }
+  }
+
+  async function openGroup(gid, raw) {
+    const gmsg = $("gmsg");
+    try {
+      const v = (raw && raw.meta) || {};
+      const imgs = new Array(8).fill(null);
+      const pics = (raw && raw.photos) || {};
+      for (const k of Object.keys(pics)) {
+        const i = Number(k), p = pics[k];
+        if (Number.isInteger(i) && i >= 0 && i < 8 && p && p.data) imgs[i] = await loadImage(p.data);
+      }
+      const updated = v.updatedAt ? new Date(v.updatedAt) : null;
+      const info = { grade: v.grade || "", cls: v.cls || "", group: v.group || "", date: updated ? updated.toLocaleDateString("ko-KR") : "" };
+      $("gTitle").textContent = info.grade + " " + info.cls + " · " + info.group;
+      $("gMeta").textContent = "마지막 저장: " + (updated ? updated.toLocaleString("ko-KR") : "알 수 없음");
+      $("gImg").src = drawComposite(imgs, info).toDataURL("image/png");
+      const thumbs = $("gthumbs");
+      thumbs.innerHTML = "";
+      SLOTS.forEach((s, i) => {
+        const c = document.createElement("canvas");
+        c.width = 160; c.height = 160;
+        c.setAttribute("role", "img"); c.setAttribute("aria-label", s.n + " 위치");
+        thumbs.appendChild(c);
+        renderMoon(c, s.d, imgs[i]);
+      });
+      $("gview").hidden = false;
+      gmsg.textContent = "";
+    } catch (e) {
+      gmsg.textContent = "결과를 불러오지 못했습니다. 다시 눌러 주세요.";
+    }
+  }
+
+  // ----- build slots -----
+  SLOTS.forEach((s, i) => {
+    const fig = document.createElement("figure");
+    fig.className = "slot";
+    const canvas = document.createElement("canvas");
+    canvas.width = 200; canvas.height = 200;
+    canvas.setAttribute("role", "img"); canvas.setAttribute("aria-label", s.n + " 위치 미리보기");
+    const cap = document.createElement("figcaption");
+    cap.innerHTML = "<strong>" + s.n + "</strong> · " + s.d + "°";
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*";
+    input.setAttribute("aria-label", s.n + " 사진 선택");
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      // Read the file as a data: address (blob: addresses are blocked in some viewers).
+      const reader = new FileReader();
+      reader.onerror = () => { cap.textContent = "파일을 읽지 못했습니다. 다른 사진으로 다시 시도하세요."; };
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => { photos[i] = img; renderSlot(i); update(); refreshResultIfOpen(); };
+        img.onerror = () => { cap.textContent = "이미지를 읽지 못했습니다. JPG 또는 PNG 사진으로 다시 시도하세요."; };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    fig.append(canvas, cap, input);
+    slotsEl.appendChild(fig);
+  });
+
+  SLOTS.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("aria-label", s.n + " 보기");
+    b.addEventListener("click", () => { detailIdx = i; renderDetail(); });
+    dots.appendChild(b);
+  });
+  $("prev").addEventListener("click", () => { detailIdx = (detailIdx + 7) % 8; renderDetail(); });
+  $("next").addEventListener("click", () => { detailIdx = (detailIdx + 1) % 8; renderDetail(); });
+
+  // ----- animation -----
+  let playing = false, last = 0, autoTimer = null;
+  function stopAuto() { clearTimeout(autoTimer); autoTimer = null; autoBtn.textContent = "8위치 자동 재생"; autoBtn.classList.remove("primary"); }
+  function stopContinuous() { playing = false; playBtn.textContent = "연속 재생"; playBtn.classList.remove("primary"); }
+  function tick(now) {
+    if (!playing) return;
+    const dt = last ? (now - last) / 1000 : 0; last = now;
+    const deg = (Number(range.value) + dt * 22.5) % 360;
+    range.value = Math.floor(deg); update();
+    requestAnimationFrame(tick);
+  }
+  playBtn.addEventListener("click", () => {
+    stopAuto(); playing = !playing;
+    playBtn.textContent = playing ? "멈춤" : "연속 재생";
+    playBtn.classList.toggle("primary", playing);
+    last = 0;
+    if (playing) requestAnimationFrame(tick);
+  });
+  autoBtn.addEventListener("click", () => {
+    if (autoTimer) { stopAuto(); return; }
+    stopContinuous();
+    let i = 0;
+    const step = () => { range.value = SLOTS[i].d; update(); i = (i + 1) % 8; autoTimer = setTimeout(step, 1800); };
+    autoBtn.textContent = "자동 재생 멈춤"; autoBtn.classList.add("primary");
+    step();
+  });
+  range.addEventListener("input", () => { stopAuto(); stopContinuous(); update(); });
+
+  // ----- result controls -----
+  $("finish").addEventListener("click", () => { resultSec.hidden = false; setStep(1); resultSec.scrollIntoView({ behavior: "smooth", block: "start" }); });
+  tab1.addEventListener("click", () => setStep(1));
+  tab2.addEventListener("click", () => setStep(2));
+
+  // Download a canvas as a file (a normal page can use an <a download> link).
+  function saveBlob(blob, filename) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  $("saveImg").addEventListener("click", () => {
+    renderResult();
+    const info = groupInfo();
+    const filename = "달의위상_" + info.grade + "_" + info.cls + "_" + info.group + ".png";
+    resultCanvas.toBlob((blob) => {
+      if (!blob) { showMsg("이미지를 만들지 못했습니다."); return; }
+      saveBlob(blob, filename);
+      showMsg("이미지 저장을 시작했습니다.");
+    }, "image/png");
+  });
+  $("copyImg").addEventListener("click", () => {
+    renderResult();
+    resultCanvas.toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        showMsg("이미지를 복사했습니다. 문서에 붙여 넣으세요.");
+      } catch (e) {
+        showMsg("이미지 복사가 막혀 있습니다. 결과 이미지를 길게 누르거나 우클릭해 복사하세요.");
+      }
+    }, "image/png");
+  });
+  $("copyTxt").addEventListener("click", async () => {
+    summaryEl.value = summaryText();
+    try { await navigator.clipboard.writeText(summaryEl.value); showMsg("텍스트를 복사했습니다."); }
+    catch (e) { summaryEl.focus(); summaryEl.select(); showMsg("복사가 막혀 있습니다. 아래 텍스트를 선택해 직접 복사하세요."); }
+  });
+
+  serverSaveBtn.addEventListener("click", saveToServer);
+  $("loadGroups").addEventListener("click", loadGroups);
+  [gradeEl, clsEl, groupEl].forEach((el) => el.addEventListener("input", refreshResultIfOpen));
+
+  $("clearAll").addEventListener("click", () => {
+    photos.fill(null);
+    slotsEl.querySelectorAll("input[type=file]").forEach((el) => { el.value = ""; });
+    for (let i = 0; i < 8; i++) renderSlot(i);
+    update(); refreshResultIfOpen();
+  });
+
+  for (let i = 0; i < 8; i++) renderSlot(i);
+  update(); renderDetail();
+})();
+</script>
+</body>
+</html>
