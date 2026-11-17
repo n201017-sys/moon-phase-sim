@@ -121,8 +121,8 @@ textarea {
   <section class="card info" aria-labelledby="info-title">
     <h2 id="info-title">모둠 정보</h2>
     <div class="fields">
-      <label class="field"><span>반 코드 (선생님이 알려 준 코드)</span><input id="classCode" type="text" maxlength="30" placeholder="예: 3-2026"></label>
-      <label class="field"><span>학년</span><input id="grade" type="text" maxlength="20" placeholder="예: 2학년"></label>
+      <label class="field"><span>반 코드 (선생님이 알려 준 코드)</span><input id="classCode" type="text" maxlength="30" placeholder="예: 1-2026"></label>
+      <label class="field"><span>학년</span><input id="grade" type="text" maxlength="20" placeholder="예: 1학년"></label>
       <label class="field"><span>반</span><input id="cls" type="text" maxlength="20" placeholder="예: 3반"></label>
       <label class="field"><span>모둠명</span><input id="group" type="text" maxlength="30" placeholder="예: 햇살 모둠"></label>
     </div>
@@ -146,6 +146,7 @@ textarea {
     <div class="controls">
       <button id="auto" type="button">8위치 자동 재생</button>
       <button id="play" type="button">연속 재생</button>
+      <button id="shade" type="button" aria-pressed="true">명암 씌우기: 켬</button>
     </div>
     <div class="controls">
       <input id="angleRange" type="range" min="0" max="359" step="1" value="0" aria-label="달의 공전 각도">
@@ -272,6 +273,7 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   ];
 
   const photos = new Array(8).fill(null);
+  let shadeOn = true; // true: 명암 씌우기 켬, false: 사진 그대로
   const rad = (deg) => deg * Math.PI / 180;
   const $ = (id) => document.getElementById(id);
   const litPct = (deg) => Math.round((1 - Math.cos(rad(deg))) / 2 * 100);
@@ -314,6 +316,16 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   }
 
   function drawMoonAt(ctx, cx, cy, R, deg, src) {
+    // 명암 끔: show the photo as it was taken, cropped to a circle, with no phase mask.
+    if (!shadeOn && src) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+      drawCover(ctx, src, cx - R, cy - R, Math.round(2 * R));
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = Math.max(1, R * 0.012); ctx.stroke();
+      return;
+    }
     const t = rad(((deg % 360) + 360) % 360);
     const S = Math.round(2 * R), r = S / 2;
     const flipped = t > Math.PI;
@@ -409,8 +421,15 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
     ctx.beginPath(); ctx.ellipse(cx + 20, cy - 16, 12, 8, -0.3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#c9d1de"; ctx.font = "600 22px 'Noto Sans KR', system-ui, sans-serif";
     ctx.fillText("지구", cx, cy + 90);
+    // Sun on the left, as in the orbit view.
+    const sunG = ctx.createRadialGradient(60, cy, 6, 60, cy, 46);
+    sunG.addColorStop(0, "#fff3b0"); sunG.addColorStop(1, "rgba(255,190,60,0)");
+    ctx.fillStyle = sunG; ctx.beginPath(); ctx.arc(60, cy, 46, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.arc(60, cy, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#c9d1de"; ctx.fillText("태양", 60, cy + 62);
     SLOTS.forEach((s, i) => {
-      const a = rad(s.d), x = cx + R * Math.cos(a), y = cy - R * Math.sin(a);
+      // Same layout as the orbit view: 삭 on the sun side (left), 보름 on the far side (right), 상현 below Earth.
+      const a = rad(s.d), x = cx - R * Math.cos(a), y = cy + R * Math.sin(a);
       ctx.fillStyle = "#16203a"; ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(x - half, y - half, half * 2, half * 2, 22);
       else ctx.rect(x - half, y - half, half * 2, half * 2);
@@ -553,6 +572,8 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
     if (!consentEl.checked) { note("사진을 찍은 학생과 보호자의 동의를 확인해야 저장할 수 있습니다. 위의 체크 칸을 누르세요."); return; }
     if (!photos.some(Boolean)) { note("저장할 사진이 없습니다."); return; }
 
+    // Open the viewer window inside the click so the browser does not block it later.
+    const win = window.open("about:blank", "_blank");
     serverSaveBtn.disabled = true;
     note("저장 중...");
     try {
@@ -573,8 +594,15 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
         slots: slots, updatedAt: Date.now()
       };
       await db.ref(base).update(updates);
-      note("저장했습니다. 아래 '우리 반 모둠별 결과 보기'에서 확인할 수 있습니다.");
+      const viewUrl = location.href.split("?")[0] + "?view=1&code=" + encodeURIComponent(classCodeEl.value.trim()) + "&gid=" + gid;
+      if (win && !win.closed) {
+        win.location.href = viewUrl;
+        note("저장했습니다. 새 창에서 결과 이미지와 시뮬레이션을 볼 수 있습니다.");
+      } else {
+        note("저장했습니다. 새 창이 막혀 있다면 이 주소를 여세요: " + viewUrl);
+      }
     } catch (e) {
+      if (win && !win.closed) win.close();
       note("저장하지 못했습니다. 인터넷 연결과 반 코드를 확인한 뒤 다시 눌러 주세요.");
     } finally {
       serverSaveBtn.disabled = !photos.some(Boolean);
@@ -711,6 +739,16 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   });
   range.addEventListener("input", () => { stopAuto(); stopContinuous(); update(); });
 
+  // Toggle between the phase-masked view and the plain photo view.
+  $("shade").addEventListener("click", () => {
+    shadeOn = !shadeOn;
+    $("shade").textContent = shadeOn ? "명암 씌우기: 켬" : "명암 씌우기: 끔 (사진 그대로)";
+    $("shade").setAttribute("aria-pressed", String(shadeOn));
+    update();
+    for (let i = 0; i < 8; i++) renderSlot(i);
+    refreshResultIfOpen();
+  });
+
   // ----- result controls -----
   $("finish").addEventListener("click", () => { resultSec.hidden = false; setStep(1); resultSec.scrollIntoView({ behavior: "smooth", block: "start" }); });
   tab1.addEventListener("click", () => setStep(1));
@@ -763,7 +801,40 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   });
 
   for (let i = 0; i < 8; i++) renderSlot(i);
+  // Viewer window: ?view=1&code=...&gid=... shows the saved group's result and plays the simulation.
+  async function startViewer(code, gid) {
+    ["info-title", "slots-title", "gallery-title", "limits-title"].forEach((id) => {
+      const s = document.querySelector('[aria-labelledby="' + id + '"]');
+      if (s) s.hidden = true;
+    });
+    $("serverSave").hidden = true;
+    resultSec.hidden = false;
+    if (!db || !code || !gid) { showMsg("자료 주소가 올바르지 않습니다."); setStep(2); return; }
+    showMsg("모둠 자료를 불러오는 중...");
+    try {
+      const snap = await db.ref("classes/" + safeKey(code) + "/groups/" + gid).once("value");
+      const raw = snap.val();
+      if (!raw || !raw.meta) { showMsg("이 모둠의 저장 자료를 찾지 못했습니다. 반 코드를 확인하세요."); return; }
+      gradeEl.value = raw.meta.grade || "";
+      clsEl.value = raw.meta.cls || "";
+      groupEl.value = raw.meta.group || "";
+      const pics = raw.photos || {};
+      for (const k of Object.keys(pics)) {
+        const i = Number(k), p = pics[k];
+        if (Number.isInteger(i) && i >= 0 && i < 8 && p && p.data) photos[i] = await loadImage(p.data);
+      }
+      update();
+      setStep(2);
+      if (!playing) playBtn.click();
+      showMsg("결과 이미지와 시뮬레이션입니다. 연속 재생 버튼으로 움직일 수 있습니다.");
+    } catch (e) {
+      showMsg("자료를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침하세요.");
+    }
+  }
+
   update(); renderDetail();
+  const qp = new URLSearchParams(location.search);
+  if (qp.get("view") === "1") startViewer(qp.get("code") || "", qp.get("gid") || "");
 })();
 </script>
 </body>
