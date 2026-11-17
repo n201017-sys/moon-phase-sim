@@ -107,6 +107,8 @@ textarea {
 .gthumbs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
 @media (max-width: 640px) { .gthumbs { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .limits ul { margin: 8px 0 0; padding-left: 1.2em; }
+.rrow { display: grid; grid-template-columns: 110px repeat(5, minmax(0, 1fr)); gap: 8px; align-items: center; margin-top: 10px; }
+@media (max-width: 640px) { .rrow { grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 1fr)); } }
 .limits li { margin: 4px 0; color: var(--muted); }
 </style>
 </head>
@@ -115,16 +117,16 @@ textarea {
 <header>
   <h1>달의 위상 시뮬레이션</h1>
   <p class="sub">친구 얼굴 사진 8장을 달의 위치에 맞춰 놓고, 공전에 따른 위상 변화를 재현합니다.</p>
+  <button id="backRoster" type="button" hidden style="margin-top:10px">← 반별 목록으로</button>
 </header>
 
 <main>
   <section class="card info" aria-labelledby="info-title">
     <h2 id="info-title">모둠 정보</h2>
     <div class="fields">
-      <label class="field"><span>반 코드 (선생님이 알려 준 코드)</span><input id="classCode" type="text" maxlength="30" placeholder="예: 1-2026"></label>
-      <label class="field"><span>학년</span><input id="grade" type="text" maxlength="20" placeholder="예: 1학년"></label>
-      <label class="field"><span>반</span><input id="cls" type="text" maxlength="20" placeholder="예: 3반"></label>
-      <label class="field"><span>모둠명</span><input id="group" type="text" maxlength="30" placeholder="예: 햇살 모둠"></label>
+      <label class="field"><span>학년 (숫자만)</span><input id="grade" type="number" min="1" max="3" placeholder="예: 1"></label>
+      <label class="field"><span>반 (숫자만)</span><input id="cls" type="number" min="1" max="4" placeholder="예: 1"></label>
+      <label class="field"><span>모둠 (숫자만)</span><input id="group" type="number" min="1" max="5" placeholder="예: 1"></label>
     </div>
     <label class="consent">
       <input id="consent" type="checkbox">
@@ -200,7 +202,7 @@ textarea {
       <div class="actions">
         <button id="serverSave" class="primary" type="button" disabled>반 자료에 이 모둠 저장</button>
       </div>
-      <p class="note" id="serverNote">같은 반 코드·학년·반·모둠명으로 저장하면 이전 자료를 덮어씁니다. 서버에는 축소한 사진 사본만 저장됩니다.</p>
+      <p class="note" id="serverNote">같은 학년·반·모둠으로 저장하면 이전 자료를 덮어씁니다. 서버에는 축소한 사진 사본만 저장됩니다.</p>
 
       <label for="summary" class="note" style="display:block">텍스트 요약 (직접 선택해 복사할 수도 있습니다)</label>
       <textarea id="summary" readonly rows="10"></textarea>
@@ -211,7 +213,7 @@ textarea {
 
   <section class="card wide" aria-labelledby="gallery-title">
     <h2 id="gallery-title">우리 반 모둠별 결과 보기</h2>
-    <p class="note" style="margin-top:0">위의 <strong>반 코드</strong>를 입력한 뒤 목록을 불러오면, 그 반에 저장된 모둠만 나옵니다.</p>
+    <p class="note" style="margin-top:0">목록을 불러오면 이 반에 저장된 모둠이 모두 나옵니다.</p>
     <div class="actions">
       <button id="loadGroups" type="button">모둠 목록 불러오기</button>
     </div>
@@ -225,6 +227,12 @@ textarea {
     </div>
   </section>
 
+  <section id="roster" class="card wide" aria-labelledby="roster-title" hidden>
+    <h2 id="roster-title">반별 모둠 결과 확인하기</h2>
+    <p class="note" style="margin-top:0">버튼을 누르면 그 모둠의 시뮬레이션과 결과 화면이 열립니다. 자료가 없는 모둠은 누를 수 없습니다.</p>
+    <div id="rosterBody"></div>
+  </section>
+
   <section class="card limits wide" aria-labelledby="limits-title">
     <h2 id="limits-title">이 시뮬레이션의 한계와 주의</h2>
     <ul>
@@ -232,7 +240,7 @@ textarea {
       <li>사진에 이미 찍힌 조명이 있으면 가짜 명암과 겹칩니다. 자동 노출을 끄고 같은 밝기로 찍어야 합니다.</li>
       <li>각도 사이의 값은 가장 가까운 칸의 사진을 씁니다. 실제 달의 위상은 연속적으로 변합니다.</li>
       <li>궤도 기울기(약 5°)와 거리 비율은 반영하지 않습니다. 그림은 축척이 없습니다.</li>
-      <li>서버에는 원본이 아니라 축소 사본(480px 이하)이 저장됩니다. 반 코드를 아는 사람은 누구나 자료를 볼 수 있으므로, 활동이 끝나면 선생님이 자료를 지우세요.</li>
+      <li>서버에는 원본이 아니라 축소 사본(480px 이하)이 저장됩니다. 이 페이지 주소를 아는 사람은 누구나 자료를 볼 수 있으므로, 활동이 끝나면 선생님이 자료를 지우세요.</li>
     </ul>
   </section>
 </main>
@@ -299,7 +307,8 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   const playBtn = $("play"), autoBtn = $("auto"), phaseName = $("phaseName");
   const pctEl = $("pct"), angleEl = $("angle"), sourceNote = $("sourceNote");
   const slotsEl = $("slots"), gradeEl = $("grade"), clsEl = $("cls"), groupEl = $("group");
-  const classCodeEl = $("classCode"), consentEl = $("consent");
+  const FIXED_CLASS_CODE = "1-2026"; // 반 코드는 고정값입니다.
+  const consentEl = $("consent");
   const resultSec = $("result"), tab1 = $("tab1"), tab2 = $("tab2");
   const panel1 = $("panel1"), panel2 = $("panel2"), detailCanvas = $("detail");
   const dName = $("dName"), dDesc = $("dDesc"), dMeta = $("dMeta"), dots = $("dots");
@@ -455,11 +464,15 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
     return "그믐달";
   }
 
+  const gradeLabel = () => (gradeEl.value.trim() ? gradeEl.value.trim() + "학년" : "학년 미입력");
+  const clsLabel = () => (clsEl.value.trim() ? clsEl.value.trim() + "반" : "반 미입력");
+  const groupLabel = () => (groupEl.value.trim() ? groupEl.value.trim() + "모둠" : "모둠 미입력");
+
   function groupInfo() {
     return {
-      grade: gradeEl.value.trim() || "학년 미입력",
-      cls: clsEl.value.trim() || "반 미입력",
-      group: groupEl.value.trim() || "모둠명 미입력",
+      grade: gradeLabel(),
+      cls: clsLabel(),
+      group: groupLabel(),
       date: new Date().toLocaleDateString("ko-KR")
     };
   }
@@ -488,13 +501,14 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   // Keys in Realtime Database cannot contain . # $ [ ] / — replace them.
   const safeKey = (s) => String(s).trim().replace(/[.#$\[\]\/]/g, "-").slice(0, 60);
 
-  async function groupId() {
-    const s = [classCodeEl.value.trim(), gradeEl.value.trim(), clsEl.value.trim(), groupEl.value.trim()].join("|");
+  async function gidFor(code, grade, cls, group) {
+    const s = [String(code).trim(), String(grade).trim(), String(cls).trim(), String(group).trim()].join("|");
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
     return "g" + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
   }
+  function groupId() { return gidFor(FIXED_CLASS_CODE, gradeLabel(), clsLabel(), groupLabel()); }
 
-  const classPath = () => "classes/" + safeKey(classCodeEl.value);
+  const classPath = () => "classes/" + safeKey(FIXED_CLASS_CODE);
 
   function showMsg(text) { msgEl.textContent = text; }
 
@@ -567,8 +581,8 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
   async function saveToServer() {
     const note = (t) => { serverNote.textContent = t; };
     if (!db) { note(dbError); return; }
-    if (!classCodeEl.value.trim()) { note("반 코드를 입력하세요."); return; }
-    if (!gradeEl.value.trim() || !clsEl.value.trim() || !groupEl.value.trim()) { note("학년, 반, 모둠명을 모두 입력한 뒤 저장하세요."); return; }
+    const okNum = (el, max) => /^[1-9]\d*$/.test(el.value.trim()) && Number(el.value) <= max;
+    if (!okNum(gradeEl, 3) || !okNum(clsEl, 4) || !okNum(groupEl, 5)) { note("학년 1~3, 반 1~4, 모둠 1~5 사이의 숫자를 입력하세요."); return; }
     if (!consentEl.checked) { note("사진을 찍은 학생과 보호자의 동의를 확인해야 저장할 수 있습니다. 위의 체크 칸을 누르세요."); return; }
     if (!photos.some(Boolean)) { note("저장할 사진이 없습니다."); return; }
 
@@ -590,14 +604,14 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
         }
       }
       updates["meta"] = {
-        grade: gradeEl.value.trim(), cls: clsEl.value.trim(), group: groupEl.value.trim(),
+        grade: gradeLabel(), cls: clsLabel(), group: groupLabel(),
         slots: slots, updatedAt: Date.now()
       };
       await db.ref(base).update(updates);
-      const viewUrl = location.href.split("?")[0] + "?view=1&code=" + encodeURIComponent(classCodeEl.value.trim()) + "&gid=" + gid;
+      const viewUrl = location.href.split("?")[0] + "?view=roster&code=" + encodeURIComponent(FIXED_CLASS_CODE);
       if (win && !win.closed) {
         win.location.href = viewUrl;
-        note("저장했습니다. 새 창에서 결과 이미지와 시뮬레이션을 볼 수 있습니다.");
+        note("저장했습니다. 새 창에서 반별 모둠 결과 목록을 볼 수 있습니다.");
       } else {
         note("저장했습니다. 새 창이 막혀 있다면 이 주소를 여세요: " + viewUrl);
       }
@@ -615,7 +629,6 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
     glist.innerHTML = "";
     $("gview").hidden = true;
     if (!db) { gmsg.textContent = dbError; return; }
-    if (!classCodeEl.value.trim()) { gmsg.textContent = "반 코드를 입력한 뒤 다시 눌러 주세요."; return; }
     gmsg.textContent = "불러오는 중...";
     try {
       const snap = await db.ref(classPath() + "/groups").once("value");
@@ -815,9 +828,9 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
       const snap = await db.ref("classes/" + safeKey(code) + "/groups/" + gid).once("value");
       const raw = snap.val();
       if (!raw || !raw.meta) { showMsg("이 모둠의 저장 자료를 찾지 못했습니다. 반 코드를 확인하세요."); return; }
-      gradeEl.value = raw.meta.grade || "";
-      clsEl.value = raw.meta.cls || "";
-      groupEl.value = raw.meta.group || "";
+      gradeEl.value = String(raw.meta.grade || "").replace(/[^0-9]/g, "");
+      clsEl.value = String(raw.meta.cls || "").replace(/[^0-9]/g, "");
+      groupEl.value = String(raw.meta.group || "").replace(/[^0-9]/g, "");
       const pics = raw.photos || {};
       for (const k of Object.keys(pics)) {
         const i = Number(k), p = pics[k];
@@ -832,9 +845,64 @@ const PAGE_URL = "PASTE_YOUR_PAGE_URL_HERE";
     }
   }
 
+  // Roster window: ?view=roster&code=... lists 1학년 1~4반 × 1~5모둠 and opens each group's result.
+  let rosterCode = "";
+
+  async function renderRoster(code) {
+    const body = $("rosterBody");
+    body.innerHTML = "";
+    if (!db) { body.textContent = dbError; return; }
+    if (!code) { body.textContent = "반 코드가 없습니다. 저장할 때 만든 새 창으로 다시 열어 주세요."; return; }
+    let existing = {};
+    try {
+      existing = (await db.ref("classes/" + safeKey(code) + "/groups").once("value")).val() || {};
+    } catch (e) { existing = {}; }
+    for (let c = 1; c <= 4; c++) {
+      const row = document.createElement("div");
+      row.className = "rrow";
+      const label = document.createElement("strong");
+      label.textContent = "1학년 " + c + "반";
+      row.appendChild(label);
+      for (let g = 1; g <= 5; g++) {
+        const gid = await gidFor(code, "1학년", c + "반", g + "모둠");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "gcard";
+        b.textContent = g + "모둠";
+        if (!existing[gid]) { b.disabled = true; b.textContent += " (자료 없음)"; }
+        b.addEventListener("click", () => viewGroup(code, gid));
+        row.appendChild(b);
+      }
+      body.appendChild(row);
+    }
+  }
+
+  function showRoster() {
+    stopAuto(); stopContinuous();
+    ["info-title", "stage-title", "slots-title", "gallery-title", "limits-title"].forEach((id) => {
+      const s = document.querySelector('[aria-labelledby="' + id + '"]');
+      if (s) s.hidden = true;
+    });
+    resultSec.hidden = true;
+    $("backRoster").hidden = true;
+    $("roster").hidden = false;
+    renderRoster(rosterCode);
+  }
+
+  async function viewGroup(code, gid) {
+    $("roster").hidden = true;
+    const stage = document.querySelector('[aria-labelledby="stage-title"]');
+    if (stage) stage.hidden = false;
+    $("backRoster").hidden = false;
+    await startViewer(code, gid);
+  }
+
+  $("backRoster").addEventListener("click", showRoster);
+
   update(); renderDetail();
   const qp = new URLSearchParams(location.search);
   if (qp.get("view") === "1") startViewer(qp.get("code") || "", qp.get("gid") || "");
+  if (qp.get("view") === "roster") { rosterCode = FIXED_CLASS_CODE; showRoster(); }
 })();
 </script>
 </body>
